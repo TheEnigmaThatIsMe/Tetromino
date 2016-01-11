@@ -217,7 +217,7 @@ class GameScene: SKScene {
     func instaDrop() {
         while collidedWith(.Down) == false {
             
-            updateScoreWith(points: 2)
+            updateScoreWith(2)
             activeTetromino.moveTo(.Down)
             updateGameBitmap()
         }
