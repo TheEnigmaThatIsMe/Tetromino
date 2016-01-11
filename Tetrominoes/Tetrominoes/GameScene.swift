@@ -55,10 +55,20 @@ class GameScene: SKScene {
     var lastUpdate:NSDate?
     
     let gameBoard = SKSpriteNode()
+    let nextTetrominoDisplay = SKSpriteNode()
+    
     var activeTetromino = Tetromino()
+    var nextTetromino = Tetromino()
     
     var gameBitmapDynamic = gameBitmapDefault
     var gameBitmapStatic = gameBitmapDefault
+    
+    let scoreLabel = SKLabelNode()
+    let levelLabel = SKLabelNode()
+    
+    var score = 0
+    var level = 1
+    var nextLevel = 3000
     
     override func didMoveToView(view: SKView) {
         /* Setup your scene here */
@@ -83,6 +93,10 @@ class GameScene: SKScene {
         refresh()
         lastUpdate = NSDate()
         
+        nextTetrominoDisplay.anchorPoint = CGPoint(x: 0, y: 1.0)
+        showNextTetromino()
+        
+        updateScoreWith(0)
     }
     
     func centerActiveTetromino() {
@@ -101,6 +115,10 @@ class GameScene: SKScene {
                 moveTetrominoTo(.Left)
             } else if location.x > gameBoardFrame.origin.x + gameBoardFrame.width {
                 moveTetrominoTo(.Right)
+            } else if CGRectContainsPoint(gameBoardFrame, location) {
+                rotateTetromino()
+            } else if location.y < gameBoardFrame.origin.y {
+                instaDrop()
             }
         }
     }
@@ -120,21 +138,26 @@ class GameScene: SKScene {
             activeTetromino.moveTo(direction)
             
             if direction == .Down {
+                updateScoreWith()
                 lastUpdate = NSDate()
             }
         } else {
             if direction == .Down {
-                gameBitmapStatic.removeAll(keepCapacity: true)
-                gameBitmapStatic = gameBitmapDynamic
-                
-                activeTetromino = Tetromino()
-                centerActiveTetromino()
-                
-                lastUpdate = NSDate()
+                didLand()
+                return
             }
         }
-        
         refresh()
+    }
+    
+    func rotateTetromino() {
+        activeTetromino.rotate()
+        
+        if collidedWith(.None) {
+            activeTetromino.rotate(.Clockwise)
+        } else {
+            refresh()
+        }
     }
     
     func collidedWith(direction: Direction) -> Bool {
@@ -163,6 +186,58 @@ class GameScene: SKScene {
         case .None:
             return collided(x, y: y)
         }
+    }
+    
+    func clearLines() {
+        var linesToClear = [Int]()
+        for row in 0..<gameBitmapDynamic.count - 1 {
+            var isLine = true
+            for col in 0..<gameBitmapDynamic[0].count {
+                if gameBitmapDynamic[row][col] == 0 {
+                    isLine = false
+                }
+            }
+            
+            if isLine {
+                linesToClear.append(row)
+            }
+        }
+        
+        if linesToClear.count > 0 {
+            for line in linesToClear {
+                gameBitmapDynamic.removeAtIndex(line)
+                gameBitmapDynamic.insert([8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8], atIndex: 1)
+            }
+            
+            var multiplier = linesToClear.count == 4 ? 10 : 1
+            updateScoreWith(linesToClear.count * linesToClear.count * linesToClear.count)
+        }
+    }
+    
+    func instaDrop() {
+        while collidedWith(.Down) == false {
+            
+            updateScoreWith(points: 2)
+            activeTetromino.moveTo(.Down)
+            updateGameBitmap()
+        }
+        didLand()
+    }
+    
+    func didLand() {
+        clearLines()
+        
+        gameBitmapStatic.removeAll(keepCapacity: true)
+        gameBitmapStatic = gameBitmapDynamic
+        
+        activeTetromino = nextTetromino
+        centerActiveTetromino()
+        
+        nextTetromino = Tetromino()
+        showNextTetromino()
+        
+        refresh()
+        lastUpdate = NSDate()
     }
     
     func refresh() {
@@ -195,6 +270,65 @@ class GameScene: SKScene {
                     square.color = colors[bit]
                 }
                 ++currentSquare
+            }
+        }
+    }
+    
+    func showNextTetromino() {
+        nextTetrominoDisplay.removeAllChildren()
+        
+        for row in 0..<nextTetromino.bitmap.count {
+            for col in 0..<nextTetromino.bitmap[row].count {
+                if nextTetromino.bitmap[row][col] > 0 {
+                    let bit = nextTetromino.bitmap[row][col]
+                    let square = SKSpriteNode(color: colors[bit], size: CGSize(width: blockSize, height: blockSize))
+                    square.anchorPoint = CGPoint(x: 0, y: 1.0)
+                    square.position = CGPoint(x: col * Int(blockSize) + col, y: -row * Int(blockSize) + -row)
+                    nextTetrominoDisplay.addChild(square)
+                }
+            }
+        }
+        
+        let nextTetrominoDisplayFrame = nextTetrominoDisplay.calculateAccumulatedFrame()
+        let gameBoardFrame = gameBoard.calculateAccumulatedFrame()
+        nextTetrominoDisplay.position = CGPoint(x: gameBoardFrame.origin.x + gameBoardFrame.width - nextTetrominoDisplayFrame.width, y: -30)
+        
+        if nextTetrominoDisplay.parent == nil {
+            self.addChild(nextTetrominoDisplay)
+        }
+    }
+    
+    func updateScoreWith(points: Int = 1) {
+        if scoreLabel.parent == nil && levelLabel.parent == nil {
+            let gameBoardFrame = gameBoard.calculateAccumulatedFrame()
+            
+            scoreLabel.text = "Score: \(score)"
+            scoreLabel.fontSize = 20.0
+            scoreLabel.fontColor = SKColor.whiteColor()
+            scoreLabel.horizontalAlignmentMode = .Left
+            scoreLabel.position = CGPoint(x: gameBoardFrame.origin.x, y: -scoreLabel.frame.height - 50)
+            self.addChild(scoreLabel)
+            
+            levelLabel.text = "Level: \(level)"
+            levelLabel.fontSize = 20.0
+            levelLabel.fontColor = SKColor.whiteColor()
+            levelLabel.horizontalAlignmentMode = .Left
+            levelLabel.position = CGPoint(x: scoreLabel.frame.origin.x, y: -levelLabel.frame.height - scoreLabel.frame.height - 50 - 10)
+            self.addChild(levelLabel)
+        }
+        
+        score += points * level * level
+        scoreLabel.text = "Score: \(score)"
+        
+        if score > nextLevel {
+            levelLabel.text = "Level: \(++level)"
+            nextLevel = Int(2.5 * Double(nextLevel))
+            
+            if dropTime - 150 <= 0 {
+                // Maximum speed
+                dropTime = 100
+            } else {
+                dropTime -= 150
             }
         }
     }
